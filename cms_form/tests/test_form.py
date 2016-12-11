@@ -36,14 +36,14 @@ class TestForm(TransactionCase):
 
     def test_form_init(self):
         request = fake_request()
-        form = self.env['cms.form']
+        form = self.env['cms.form'].new()
         form.form_init(request)
         self.assertTrue(isinstance(form.request, Request))
         self.assertTrue(isinstance(form.o_request, http.HttpRequest))
 
     def test_form_init_overrides(self):
         request = fake_request()
-        form = self.env['cms.form']
+        form = self.env['cms.form'].new()
         form.form_init(request,
                        fields_whitelist=('name', ),
                        fields_blacklist=('country_id', ),
@@ -53,7 +53,7 @@ class TestForm(TransactionCase):
         self.assertEqual(form._form_fields_attributes, ('string', 'type', ))
 
     def test_fields(self):
-        form = self.env['cms.form.partner_test']
+        form = self.env['cms.form.test_partner'].new()
         fields = form.form_fields()
         self.assertEqual(len(fields), 3)
         self.assertTrue('name' in fields.keys())
@@ -61,7 +61,7 @@ class TestForm(TransactionCase):
         self.assertTrue('custom' in fields.keys())
 
         # whitelist
-        form = self.env['cms.form.partner_test']
+        form = self.env['cms.form.test_partner'].new()
         form.form_init(fake_request(), fields_whitelist=('name', ))
         fields = form.form_fields()
         self.assertEqual(len(fields), 1)
@@ -70,7 +70,7 @@ class TestForm(TransactionCase):
         self.assertTrue('custom' not in fields.keys())
 
         # blacklist
-        form = self.env['cms.form.partner_test']
+        form = self.env['cms.form.test_partner'].new()
         form.form_init(fake_request(), fields_blacklist=('country_id', ))
         fields = form.form_fields()
         self.assertEqual(len(fields), 2)
@@ -79,14 +79,14 @@ class TestForm(TransactionCase):
         self.assertTrue('custom' in fields.keys())
 
     def test_fields_attributes(self):
-        form = self.env['cms.form.partner_test']
+        form = self.env['cms.form.test_partner'].new()
         fields = form.form_fields()
         # fields from partner model
         self.assertTrue(fields['name']['required'])
         self.assertTrue(fields['country_id']['required'])
 
     def test_load_defaults(self):
-        form = self.env['cms.form.partner_test']
+        form = self.env['cms.form.test_partner'].new()
         request = fake_request()
         form.form_init(request)
 
@@ -125,3 +125,28 @@ class TestForm(TransactionCase):
         defaults = form.form_load_defaults(main_object)
         for k, v in data.iteritems():
             self.assertEqual(defaults[k], v)
+
+    def test_extract_from_request(self):
+        form = self.env['cms.form.test_fields'].new()
+        # values from request
+        data = {
+            'a_char': 'Jack White',
+            'a_number': '10',
+            'a_float': '5',
+            'a_many2one': '123',
+            'a_many2many': '1,2,3',
+            'a_one2many': '4,5,6',
+        }
+        request = fake_request(form_data=data)
+        form.form_init(request)
+        values = form.form_extract_values()
+        expected = {
+            'a_char': 'Jack White',
+            'a_number': 10,
+            'a_float': 5.0,
+            'a_many2one': 123,
+            'a_many2many': [(6, False, [1, 2, 3]), ],
+            'a_one2many': [(6, False, [4, 5, 6]), ],
+        }
+        for k, v in values.iteritems():
+            self.assertEqual(expected[k], v)

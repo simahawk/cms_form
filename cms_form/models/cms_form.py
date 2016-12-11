@@ -228,6 +228,9 @@ class CMSFormMixin(models.AbstractModel):
         return values
 
 
+DEFAULT_WIDGETS = {}
+
+
 class CMSForm(models.AbstractModel):
     _name = 'cms.form'
     _inherit = 'cms.form.mixin'
@@ -238,7 +241,7 @@ class CMSForm(models.AbstractModel):
     _form_mode = ''
     _form_extra_css_klass = ''
     _form_validators = {}
-    _form_widgets = {}
+    _form_widgets = DEFAULT_WIDGETS
 
     @property
     def form_css_klass(self):
@@ -273,7 +276,12 @@ class CMSForm(models.AbstractModel):
     @property
     def form_title(self):
         # TODO
-        return 'Form'
+        return 'Form title'
+
+    @property
+    def form_description(self):
+        # TODO
+        return 'Form description'
 
     @property
     def form_mode(self):
@@ -285,10 +293,15 @@ class CMSForm(models.AbstractModel):
             return 'create'
         return 'base'
 
-    def render(self, values):
-        return self.request.render(self.form_template, values)
+    def form_render(self, values=None):
+        values = values or self._form_get_render_values()
+        return self.o_request.render(self.form_template, values)
 
-    def form_process(self):
+    def _form_get_render_values(self):
+        """Default rendering values.
+
+        Override it to inject custom values.
+        """
         values = {
             'main_object': self.main_object,
             'form': self,
@@ -296,14 +309,18 @@ class CMSForm(models.AbstractModel):
             'errors': {},
             'errors_messages': {},
         }
+        return values
+
+    def form_process(self):
+        render_values = self._form_get_render_values()
         handler = getattr(self, 'form_process_' + self.request.method.upper())
-        response = handler(values)
+        response = handler(render_values)
         return response
 
     def form_process_GET(self, render_values, main_object=None):
         form_data = self.form_load_defaults(main_object=main_object)
         render_values['form_data'] = form_data
-        return self.render(render_values)
+        return self.form_render(render_values)
 
     def form_next_url(self, main_object=None):
         main_object = main_object or self.main_object
@@ -341,7 +358,7 @@ class CMSForm(models.AbstractModel):
             if self.o_request.website:
                 msg = self.form_msg_error
                 self.o_request.website.add_status_message(msg, mtype='danger')
-        return self.render(render_values)
+        return self.form_render(render_values)
 
     def form_validate(self, request_values=None):
         errors = {}
@@ -374,6 +391,15 @@ class CMSForm(models.AbstractModel):
             msg = self.form_msg_error_missing
             self.o_request.website.add_status_message(msg, mtype='danger')
         return errors, errors_message
+
+    def _form_update_fields_attributes(self, fields):
+        """Override to add widgets."""
+        super(CMSForm, self)._form_update_fields_attributes(fields)
+        for fname, field in fields.iteritems():
+            field['widget'] = None
+            for key in (field['type'], fname):
+                if key in self._form_widgets:
+                    field['widget'] = self._form_widgets[key]
 
 
 class TestPartnerForm(models.AbstractModel):
@@ -414,10 +440,10 @@ class TestFieldsForm(models.AbstractModel):
         return _fields
 
     def _form_validate_a_float(self, value, **request_values):
-        """Specific handle for `a_float` field."""
+        """Specific validator for `a_float` field."""
         value = float(value or '0')
         return not value > 5, 'Must be greater than 5!'
 
     def _form_validate_char(self, value, **request_values):
-        """Specific handler for `char` fields."""
+        """Specific validator for all `char` fields."""
         return not len(value) > 8, 'Text lenght must be greater than 8!'

@@ -195,3 +195,11 @@ class TestForm(TransactionCase):
         main_object = form._form_create_or_update()
         self.assertEqual(main_object.name, data['name'])
         self.assertEqual(main_object.country_id.id, data['country_id'])
+
+    def test_render(self):
+        form = self.env['cms.form.test_fields'].new()
+        request = fake_request()
+        form.form_init(request)
+        html = form.form_render()
+        # TODO: test with html parsing
+        self.assertTrue('<form' in html)

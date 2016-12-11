@@ -23,7 +23,9 @@ def fake_request(form_data=None, query_string=None,
         content_type=content_type,
         method=method)
     req.session = mock.MagicMock()
-    return http.HttpRequest(req)
+    o_req = http.HttpRequest(req)
+    o_req.website = mock.MagicMock()
+    return o_req
 
 
 class TestForm(TransactionCase):
@@ -150,3 +152,27 @@ class TestForm(TransactionCase):
         }
         for k, v in values.iteritems():
             self.assertEqual(expected[k], v)
+
+    def test_create_or_update(self):
+        form = self.env['cms.form.test_partner'].new()
+        # create
+        data = {
+            'name': 'Edward Norton',
+        }
+        request = fake_request(form_data=data, method='POST')
+        form.form_init(request, required_fields=('name', ))
+        main_object = form._form_create_or_update()
+        self.assertEqual(main_object._name, 'res.partner')
+        self.assertEqual(main_object.name, data['name'])
+        # update
+        data = {
+            'name': 'Edward Flip',
+            'country_id': 1,
+            'custom': 'foo',
+        }
+        request = fake_request(form_data=data, method='POST')
+        form.form_init(
+            request, main_object=main_object, required_fields=('name', ))
+        main_object = form._form_create_or_update()
+        self.assertEqual(main_object.name, data['name'])
+        self.assertEqual(main_object.country_id.id, data['country_id'])

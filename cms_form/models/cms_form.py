@@ -4,10 +4,10 @@
 
 from openerp import models
 from openerp import fields
-# from openerp import _
+from openerp import _
 
 import json
-# import werkzeug.urls
+import werkzeug
 import inspect
 
 
@@ -39,14 +39,14 @@ def x2many_to_form(item, value, display_field='display_name', **req_values):
 def form_to_integer(value, **req_values):
     try:
         return int(value)
-    except ValueError:
+    except (ValueError, TypeError):
         return 0
 
 
 def form_to_float(value, **req_values):
     try:
         return float(value)
-    except ValueError:
+    except (ValueError, TypeError):
         return 0.0
 
 
@@ -72,25 +72,31 @@ DEFAULT_EXTRACTORS = {
 }
 
 
-class CMSForm(models.AbstractModel):
+class CMSFormMixin(models.AbstractModel):
     """Base abstract CMS form."""
-    _name = 'cms.form'
-    _description = 'CMS Form'  # TODO
+    _name = 'cms.form.mixin'
+    _description = 'CMS Form mixin'
 
     # model tied to this form
     _form_model = ''
     # model's fields to load
     _form_model_fields = []
+    # quickly force required fields
     _form_required_fields = ()
+    # fields' attributes to load
     _form_fields_attributes = [
         'type', 'string', 'domain', 'required', 'readonly',
     ]
+    # include only these fields
     _form_fields_whitelist = ()
+    # exclude these fields
     _form_fields_blacklist = ()
+    # handlers to extract values from request
     _form_extractors = DEFAULT_EXTRACTORS
+    # handlers to load values from existing item or simple defaults
     _form_loaders = DEFAULT_LOADERS
 
-    def form_init(self, request, **kw):
+    def form_init(self, request, main_object=None, **kw):
         """Initalize a form.
 
         @param request: an odoo-wrapped werkeug request
@@ -99,6 +105,7 @@ class CMSForm(models.AbstractModel):
         """
         self.o_request = request  # odoo wrapped request
         self.request = request.httprequest  # werkzeug request, the "real" one
+        self.main_object = main_object
         # override `_form_` parameters
         for k, v in kw.iteritems():
             if not inspect.ismethod(getattr(self, '_form_' + k)):
@@ -156,7 +163,7 @@ class CMSForm(models.AbstractModel):
         return {k: v for k, v in self.request.form.iteritems()
                 if k not in ('csrf_token', )}
 
-    def form_load_defaults(self, main_object, request_values=None):
+    def form_load_defaults(self, main_object=None, request_values=None):
         """Load default values.
 
         Values lookup order:
@@ -164,6 +171,7 @@ class CMSForm(models.AbstractModel):
         1. `main_object` fields' values (if an existing main_object is passed)
         2. request parameters (only parameters matching form fields names)
         """
+        main_object = main_object or self.main_object
         request_values = request_values or self._form_get_request_values()
         defaults = request_values.copy()
         form_fields = self.form_fields()
@@ -211,46 +219,121 @@ class CMSForm(models.AbstractModel):
             values[fname] = value
         return values
 
-    # def form_do_edit(self, reference=None, **post):
-    #     countries = self.env['res.country'].sudo().search([])
-    #     values = {
-    #         'reference': reference,
-    #         'errors': {},
-    #         'error_messages': {},
-    #         'countries': countries,
-    #     }
-    #     if self.request.method == 'GET':
-    #         values.update(self.load_defaults(reference))
-    #     elif self.request.method == 'POST':
-    #         msg = False
-    #         errors, errors_message = self.details_form_validate(post)
-    #         if not errors:
-    #             values = self.extract_values(post)
-    #             if reference:
-    #                 reference.write(values)
-    #                 msg = _('Reference updated.')
-    #             else:
-    #                 reference = self.env['project.reference'].create(values)
-    #                 # TODO: handle this better with some hook
-    #                 # and with proper mgmt of partner profile
-    #                 partner = request.env.user.partner_id
-    #                 if partner.profile_state == 'step-2':
-    #                     partner.profile_state = 'step-3'
-    #                 msg = _('Reference created.')
-    #             if msg and request.website:
-    #                 request.website.add_status_message(msg)
-    #             return werkzeug.utils.redirect(reference.website_url)
-    #
-    #         values.update({
-    #             'errors': errors,
-    #             'errors_message': errors_message,
-    #         })
-    #         values.update(self.load_defaults(reference), **post)
-    #         if self.o_request.website:
-    #             msg = _('Some errors occurred.')
-    #             self.o_request.website.add_status_message(msg, mtype='danger')
-    #     return self.o_request.website.render(
-    #         "specific_project.reference_form", values)
+
+class CMSForm(models.AbstractModel):
+    _name = 'cms.form'
+    _inherit = 'cms.form.mixin'
+
+    # template to render the form
+    _form_template = 'cms_form.base_form'
+    _form_action = ''
+    _form_mode = ''
+    _form_extra_css_klass = ''
+    _form_widgets = {}
+
+    @property
+    def form_css_klass(self):
+        return ' '.join([
+            'cms_form',
+            self.form_model.replace('.', '_').lower(),
+            self._form_extra_css_klass,
+        ])
+
+    @property
+    def form_msg_success_created(self):
+        # TODO: include form model name if any
+        msg = _('Item created.')
+        return msg
+
+    @property
+    def form_msg_success_updated(self):
+        return _('Item updated.')
+
+    @property
+    def form_msg_error(self):
+        return _('Some errors occurred.')
+
+    @property
+    def form_template(self):
+        return self._form_template
+
+    @property
+    def form_title(self):
+        # TODO
+        return 'Form'
+
+    @property
+    def form_mode(self):
+        if self._form_mode:
+            return self._form_mode
+        if self.request.method.upper() == 'GET':
+            return 'write'
+        elif self.request.method.upper() == 'POST':
+            return 'create'
+        return 'base'
+
+    def render(self, values):
+        return self.request.render(self.form_template, values)
+
+    def form_process(self):
+        values = {
+            'main_object': self.main_object,
+            'form': self,
+            'form_data': {},
+            'errors': {},
+            'errors_messages': {},
+        }
+        handler = getattr(self, 'form_process_' + self.request.method.upper())
+        response = handler(values)
+        return response
+
+    def form_process_GET(self, render_values, main_object=None):
+        form_data = self.form_load_defaults(main_object=main_object)
+        render_values['form_data'] = form_data
+        return self.render(render_values)
+
+    def form_next_url(self, main_object=None):
+        main_object = main_object or self.main_object
+        if main_object:
+            if 'website_url' in main_object:
+                return main_object.website_url
+        return '/'
+
+    def _form_create_or_update(self):
+        main_object = self.main_object
+        write_values = self.form_extract_values()
+        if main_object:
+            main_object.write(write_values)
+            msg = self.form_msg_success_updated
+        else:
+            main_object = self.form_model.create(write_values)
+            msg = self.form_msg_success_created
+        if msg and self.o_request.website:
+            self.o_request.website.add_status_message(msg)
+        return main_object
+
+    def form_process_POST(self, render_values):
+        msg = False
+        errors, errors_message = self.form_validate_POST()
+        if not errors:
+            main_object = self._form_create_or_update()
+            next_url = self.form_next_url(main_object=main_object)
+            return werkzeug.utils.redirect(next_url)
+        else:
+            render_values.update({
+                'errors': errors,
+                'errors_message': errors_message,
+            })
+            render_values.update(self.form_load_defaults(main_object))
+            if self.o_request.website:
+                msg = self.form_error_msg
+                self.o_request.website.add_status_message(msg, mtype='danger')
+        return self.render(render_values)
+
+    def form_validate_POST(self, data=None):
+        errors = {}
+        errors_message = {}
+        return errors, errors_message
 
 
 class TestPartnerForm(models.AbstractModel):

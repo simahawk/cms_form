@@ -112,8 +112,11 @@ class CMSForm(models.AbstractModel):
         """Retrieve form fields ready to be used."""
         _all_fields = {}
         # load model fields
-        _model_fields = self.form_model.fields_get(
-            self._form_model_fields, attributes=self._form_fields_attributes)
+        _model_fields = {}
+        if self._form_model:
+            _model_fields = self.form_model.fields_get(
+                self._form_model_fields,
+                attributes=self._form_fields_attributes)
         _form_fields = self.fields_get(attributes=self._form_fields_attributes)
         # remove unwanted fields
         for fname in IGNORED_FORM_FIELDS:

@@ -116,7 +116,15 @@ class CMSFormMixin(models.AbstractModel):
         return self.env[self._form_model]
 
     def form_fields(self):
-        """Retrieve form fields ready to be used."""
+        """Retrieve form fields ready to be used.
+
+        Fields lookup:
+        * model's fields
+        * form's fields
+
+        Blacklisted fields are skipped.
+        Whitelisted fields are loaded only.
+        """
         _all_fields = {}
         # load model fields
         _model_fields = {}
@@ -229,6 +237,7 @@ class CMSForm(models.AbstractModel):
     _form_action = ''
     _form_mode = ''
     _form_extra_css_klass = ''
+    _form_validators = {}
     _form_widgets = {}
 
     @property
@@ -252,6 +261,10 @@ class CMSForm(models.AbstractModel):
     @property
     def form_msg_error(self):
         return _('Some errors occurred.')
+
+    @property
+    def form_msg_error_missing(self):
+        return _('Some required fields are empty.')
 
     @property
     def form_template(self):
@@ -314,7 +327,7 @@ class CMSForm(models.AbstractModel):
 
     def form_process_POST(self, render_values):
         msg = False
-        errors, errors_message = self.form_validate_POST()
+        errors, errors_message = self.form_validate()
         if not errors:
             main_object = self._form_create_or_update()
             next_url = self.form_next_url(main_object=main_object)
@@ -326,13 +339,40 @@ class CMSForm(models.AbstractModel):
             })
             render_values.update(self.form_load_defaults(main_object))
             if self.o_request.website:
-                msg = self.form_error_msg
+                msg = self.form_msg_error
                 self.o_request.website.add_status_message(msg, mtype='danger')
         return self.render(render_values)
 
-    def form_validate_POST(self, data=None):
+    def form_validate(self, request_values=None):
         errors = {}
         errors_message = {}
+        request_values = request_values or self._form_get_request_values()
+
+        missing = True
+        for fname, field in self.form_fields().iteritems():
+            value = request_values.get(fname)
+            error = False
+            if field['required'] and value is None:
+                errors[fname] = 'missing'
+                missing = True
+            # 1nd lookup for a default type validator
+            validator = self._form_validators.get(field['type'], None)
+            # 2nd lookup for a specific type validator
+            validator = getattr(
+                self, '_form_validate_' + field['type'], validator)
+            # 3rd lookup and override by named validator if any
+            validator = getattr(
+                self, '_form_validate_' + fname, validator)
+            if validator:
+                error, error_msg = validator(value, **request_values)
+            if error:
+                errors[fname] = error
+                errors_message[fname] = error_msg
+
+        # error message for empty required fields
+        if missing and self.o_request.website:
+            msg = self.form_msg_error_missing
+            self.o_request.website.add_status_message(msg, mtype='danger')
         return errors, errors_message
 
 
@@ -372,3 +412,12 @@ class TestFieldsForm(models.AbstractModel):
         _fields['a_many2many']['type'] = 'many2many'
         _fields['a_one2many']['type'] = 'one2many'
         return _fields
+
+    def _form_validate_a_float(self, value, **request_values):
+        """Specific handle for `a_float` field."""
+        value = float(value or '0')
+        return not value > 5, 'Must be greater than 5!'
+
+    def _form_validate_char(self, value, **request_values):
+        """Specific handler for `char` fields."""
+        return not len(value) > 8, 'Text lenght must be greater than 8!'

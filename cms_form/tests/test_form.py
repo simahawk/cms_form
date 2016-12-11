@@ -153,6 +153,25 @@ class TestForm(TransactionCase):
         for k, v in values.iteritems():
             self.assertEqual(expected[k], v)
 
+    def test_validate(self):
+        form = self.env['cms.form.test_fields'].new()
+        # values from request
+        data = {
+            'a_char': 'Foo',
+            'a_number': '10',
+            'a_float': '5',
+        }
+        request = fake_request(form_data=data)
+        required = (
+            'a_many2one', 'a_many2many'
+        )
+        form.form_init(request, required_fields=required)
+        errors, errors_message = form.form_validate()
+        self.assertTrue('a_char' in errors)
+        self.assertTrue('a_float' in errors)
+        self.assertTrue('a_many2one' in errors)
+        self.assertTrue('a_many2many' in errors)
+
     def test_create_or_update(self):
         form = self.env['cms.form.test_partner'].new()
         # create

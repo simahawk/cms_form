@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+<template id="form_wrapper" name="CMS form wrapper">
+
+  <t t-call="website.layout">
+    <t t-set="title" t-value="form.form_title" />
+    <div class="container cms_form_wrapper">
+      <h2>
+        <span class="form_title" t-esc="form.form_title" />
+      </h2>
+      <t t-raw="form.form_render()" />
+    </div>
+  </t>
+
+</template>
+
+
+<template id="base_form" name="CMS form template">
+
+  <form t-att-action="form.form_action"
+        method="POST"
+        t-attf-class="form-horizontal #{form.form_css_klass}"
+        enctype="multipart/form-data">
+
+    <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+
+    <t t-set="form_fields" t-value="form.form_fields()" />
+    <t t-foreach="form_fields.iterkeys()" t-as="fname">
+      <t t-set="field" t-value="form_fields[fname]" />
+      <t t-set="widget" t-value="field.get('widget', {})" />
+      <div t-attf-class="form-group form-field field-#{fname}">
+        <label class="col-md-3 col-sm-4 control-label"
+               t-att-for="fname" t-esc="field['string']">Name</label>
+        <div class="col-md-9 col-sm-8">
+          <t t-call="#{ widget.get('key') or 'cms_form.field_widget_text'}" />
+        </div>
+      </div>
+    </t>
+    <div class="form-group form-controls">
+       <div class="col-sm-9 col-sm-offset-3">
+         <a class="btn btn-default"
+            t-att-href="request.httprequest.referrer or form.main_object and form.main_object.website_url">Cancel</a>
+         <button type="submit" class="btn btn-primary">Submit</button>
+       </div>
+     </div>
+  </form>
+
+</template>
+
+<template id="field_widget_text" name="CMS form text field widget">
+
+  <input type="text"
+         t-attf-class="form-control #{widget.get('css_klass', '')}"
+         t-att-name="fname"
+         t-att-value="form_data[fname]"
+         t-att-required="field['required'] and '1' or None"
+         t-att-data-params="widget.get('params')"
+         />
+
+</template>
+
+</odoo>

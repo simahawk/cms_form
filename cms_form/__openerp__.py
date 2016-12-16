@@ -13,6 +13,7 @@
     ],
     'data': [
         'security/cms_form.xml',
+        'templates/form.xml',
     ],
     'demo': [
     ],

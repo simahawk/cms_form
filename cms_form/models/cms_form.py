@@ -97,7 +97,7 @@ class CMSFormMixin(models.AbstractModel):
     _form_loaders = DEFAULT_LOADERS
 
     def form_init(self, request, main_object=None, **kw):
-        """Initalize a form.
+        """Initalize a form instance.
 
         @param request: an odoo-wrapped werkeug request
         @parm kw: pass any override for `_form_` attributes
@@ -228,7 +228,18 @@ class CMSFormMixin(models.AbstractModel):
         return values
 
 
-DEFAULT_WIDGETS = {}
+DEFAULT_WIDGETS = {
+    # 'fname' : {
+    #      # key of a qweb template
+    #     'key': 'cms_form.widget_fname',
+    #      # css_klass
+    #      'css_klass': 'extra css klasses',
+    #      # extra params for particular widgets, JSON compatible
+    #     'params': {
+    #         'a': 1,
+    #     },
+    # }
+}
 
 
 class CMSForm(models.AbstractModel):
@@ -236,19 +247,30 @@ class CMSForm(models.AbstractModel):
     _inherit = 'cms.form.mixin'
 
     # template to render the form
-    _form_template = 'cms_form.base_form'
-    _form_action = ''
+    form_template = 'cms_form.base_form'
+    form_action = ''
     _form_mode = ''
     _form_extra_css_klass = ''
     _form_validators = {}
     _form_widgets = DEFAULT_WIDGETS
+    # internal flag for turning on redirection
+    __form_redirect = False
+
+    @property
+    def form_redirect(self):
+        return self.__form_redirect
+
+    @form_redirect.setter
+    def form_redirect(self, value):
+        self.__form_redirect = value
 
     @property
     def form_css_klass(self):
         return ' '.join([
             'cms_form',
-            self.form_model.replace('.', '_').lower(),
+            self._form_model.replace('.', '_').lower(),
             self._form_extra_css_klass,
+            'mode_' + self.form_mode,
         ])
 
     @property
@@ -270,10 +292,6 @@ class CMSForm(models.AbstractModel):
         return _('Some required fields are empty.')
 
     @property
-    def form_template(self):
-        return self._form_template
-
-    @property
     def form_title(self):
         # TODO
         return 'Form title'
@@ -293,15 +311,14 @@ class CMSForm(models.AbstractModel):
             return 'create'
         return 'base'
 
-    def form_render(self, values=None):
-        values = values or self._form_get_render_values()
-        return self.o_request.render(self.form_template, values)
+    def form_render(self, override_values=None):
+        override_values = override_values or {}
+        values = self._form_render_values
+        values.update(override_values)
+        return self.env.ref(self.form_template).render(values)
 
-    def _form_get_render_values(self):
-        """Default rendering values.
-
-        Override it to inject custom values.
-        """
+    def _form_default_render_values(self):
+        """Default rendering values."""
         values = {
             'main_object': self.main_object,
             'form': self,
@@ -312,15 +329,15 @@ class CMSForm(models.AbstractModel):
         return values
 
     def form_process(self):
-        render_values = self._form_get_render_values()
+        render_values = self._form_default_render_values()
         handler = getattr(self, 'form_process_' + self.request.method.upper())
-        response = handler(render_values)
-        return response
+        render_values.update(handler(render_values))
+        self._form_render_values = render_values
 
-    def form_process_GET(self, render_values, main_object=None):
-        form_data = self.form_load_defaults(main_object=main_object)
+    def form_process_GET(self, render_values):
+        form_data = self.form_load_defaults()
         render_values['form_data'] = form_data
-        return self.form_render(render_values)
+        return render_values
 
     def form_next_url(self, main_object=None):
         main_object = main_object or self.main_object
@@ -330,42 +347,40 @@ class CMSForm(models.AbstractModel):
         return '/'
 
     def _form_create_or_update(self):
-        main_object = self.main_object
         write_values = self.form_extract_values()
-        if main_object:
-            main_object.write(write_values)
+        if self.main_object:
+            self.main_object.write(write_values)
             msg = self.form_msg_success_updated
         else:
-            main_object = self.form_model.create(write_values)
+            self.main_object = self.form_model.create(write_values)
             msg = self.form_msg_success_created
         if msg and self.o_request.website:
             self.o_request.website.add_status_message(msg)
-        return main_object
+        return self.main_object
 
     def form_process_POST(self, render_values):
         msg = False
         errors, errors_message = self.form_validate()
         if not errors:
-            main_object = self._form_create_or_update()
-            next_url = self.form_next_url(main_object=main_object)
-            return werkzeug.utils.redirect(next_url)
+            self._form_create_or_update()
+            self.form_redirect = True
         else:
             render_values.update({
                 'errors': errors,
                 'errors_message': errors_message,
+                'form_data': self.form_load_defaults(),
             })
-            render_values.update(self.form_load_defaults(main_object))
             if self.o_request.website:
                 msg = self.form_msg_error
                 self.o_request.website.add_status_message(msg, mtype='danger')
-        return self.form_render(render_values)
+        return render_values
 
     def form_validate(self, request_values=None):
         errors = {}
         errors_message = {}
         request_values = request_values or self._form_get_request_values()
 
-        missing = True
+        missing = False
         for fname, field in self.form_fields().iteritems():
             value = request_values.get(fname)
             error = False
@@ -396,7 +411,7 @@ class CMSForm(models.AbstractModel):
         """Override to add widgets."""
         super(CMSForm, self)._form_update_fields_attributes(fields)
         for fname, field in fields.iteritems():
-            field['widget'] = None
+            field['widget'] = {}
             for key in (field['type'], fname):
                 if key in self._form_widgets:
                     field['widget'] = self._form_widgets[key]
@@ -447,3 +462,15 @@ class TestFieldsForm(models.AbstractModel):
     def _form_validate_char(self, value, **request_values):
         """Specific validator for all `char` fields."""
         return not len(value) > 8, 'Text lenght must be greater than 8!'
+
+#
+# # TEST
+#
+# class PartnerForm(models.AbstractModel):
+#     """Local test form."""
+#
+#     _name = 'cms.form.project.reference'
+#     _inherit = 'cms.form'
+#     _form_model = 'project.reference'
+#     _form_model_fields = ('name', )
+#     _form_required_fields = ('name', )

@@ -48,7 +48,15 @@ class FormControllerMixin(object):
 
     def get_form(self, model, main_object=None, **kw):
         """Retrieve form for given model or object and initialize it."""
-        form = request.env['cms.form.' + model].new()
+        model_form_key = 'cms.form.' + model
+        if model_form_key in request.env:
+            form = request.env[model_form_key].new()
+        else:
+            # init a base form
+            # TODO: use a flag in the model to enable this
+            # like website_form does
+            form = request.env['cms.form'].new()
+            form._form_model = model
         form.form_init(request, main_object=main_object)
         return form
 

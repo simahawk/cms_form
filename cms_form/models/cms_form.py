@@ -7,15 +7,23 @@ from openerp import fields
 from openerp import _
 
 import json
-import werkzeug
 import inspect
 
 
-IGNORED_FORM_FIELDS = (
-    '__last_update',
+IGNORED_FORM_FIELDS = [
     'display_name',
-    'id',
-)
+    '__last_update',
+    # TODO: retrieve from inherited schema
+    'message_ids',
+    'message_follower_ids',
+    'message_follower',
+    'message_last_post',
+    'message_unread',
+    'message_unread_counter',
+    'message_needaction_counter',
+    'website_message_ids',
+    'website_published',
+] + models.MAGIC_COLUMNS
 
 
 def m2o_to_form(item, value, **req_values):
@@ -31,7 +39,7 @@ def m2o_to_form(item, value, **req_values):
 
 
 def x2many_to_form(item, value, display_field='display_name', **req_values):
-    value = [{'id': x.id, 'name': x[display_field]} for x in value]
+    value = [{'id': x.id, 'name': x[display_field]} for x in value or []]
     value = json.dumps(value)
     return value
 
@@ -85,7 +93,9 @@ class CMSFormMixin(models.AbstractModel):
     _form_required_fields = ()
     # fields' attributes to load
     _form_fields_attributes = [
-        'type', 'string', 'domain', 'required', 'readonly',
+        'type', 'string', 'domain',
+        'required', 'readonly', 'relation',
+        'store',
     ]
     # include only these fields
     _form_fields_whitelist = ()
@@ -95,6 +105,8 @@ class CMSFormMixin(models.AbstractModel):
     _form_extractors = DEFAULT_EXTRACTORS
     # handlers to load values from existing item or simple defaults
     _form_loaders = DEFAULT_LOADERS
+    # ignore this fields default
+    __form_fields_ignore = IGNORED_FORM_FIELDS
 
     def form_init(self, request, main_object=None, **kw):
         """Initalize a form instance.
@@ -133,9 +145,6 @@ class CMSFormMixin(models.AbstractModel):
                 self._form_model_fields,
                 attributes=self._form_fields_attributes)
         _form_fields = self.fields_get(attributes=self._form_fields_attributes)
-        # remove unwanted fields
-        for fname in IGNORED_FORM_FIELDS:
-            _form_fields.pop(fname, None)
         _all_fields.update(_model_fields)
         # form fields override model fields
         _all_fields.update(_form_fields)
@@ -148,6 +157,11 @@ class CMSFormMixin(models.AbstractModel):
         for fname in self._form_fields_whitelist:
             _all_whitelisted[fname] = _all_fields[fname]
         _all_fields = _all_whitelisted or _all_fields
+        # remove unwanted fields
+        for fname in self.__form_fields_ignore:
+            _all_fields.pop(fname, None)
+        # remove non-stored fields to exclude computed
+        _all_fields = {k: v for k, v in _all_fields.iteritems() if v['store']}
         # update fields attributes
         self._form_update_fields_attributes(_all_fields)
         return _all_fields
@@ -202,10 +216,11 @@ class CMSFormMixin(models.AbstractModel):
             if value_handler:
                 value = value_handler(main_object, value, **request_values)
             defaults[fname] = value
-        # add `has_*` flags for file fields
-        # so in templates we really know if a file field is valued.
-        for fname in self.form_file_fields.iterkeys():
-            defaults['has_' + fname] = bool(main_object[fname])
+        if main_object:
+            # add `has_*` flags for file fields
+            # so in templates we really know if a file field is valued.
+            for fname in self.form_file_fields.iterkeys():
+                defaults['has_' + fname] = bool(main_object[fname])
         return defaults
 
     def form_extract_values(self, **request_values):
@@ -229,7 +244,7 @@ class CMSFormMixin(models.AbstractModel):
 
 
 DEFAULT_WIDGETS = {
-    # 'fname' : {
+    # fname or field_type : {
     #      # key of a qweb template
     #     'key': 'cms_form.widget_fname',
     #      # css_klass
@@ -239,6 +254,18 @@ DEFAULT_WIDGETS = {
     #         'a': 1,
     #     },
     # }
+    'many2one': {
+        'key': 'cms_form.field_widget_m2o',
+    },
+    'one2many': {
+        'key': 'cms_form.field_widget_x2m',
+    },
+    'many2many': {
+        'key': 'cms_form.field_widget_x2m',
+    },
+    'date': {
+        'key': 'cms_form.field_widget_date',
+    },
 }
 
 

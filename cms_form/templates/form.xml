@@ -108,4 +108,13 @@
 
 </template>
 
+
+<template id="field_widget_text" name="CMS form text field widget">
+
+    <textarea t-att-name="fname" t-att-id="fname"
+              t-attf-class="form-control js_datepicker #{widget.get('css_klass', '')}"
+              t-esc="form_data.get(fname)" />
+
+</template>
+
 </odoo>

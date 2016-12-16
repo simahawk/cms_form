@@ -266,6 +266,9 @@ DEFAULT_WIDGETS = {
     'date': {
         'key': 'cms_form.field_widget_date',
     },
+    'text': {
+        'key': 'cms_form.field_widget_text',
+    },
 }
 
 
@@ -320,8 +323,16 @@ class CMSForm(models.AbstractModel):
 
     @property
     def form_title(self):
-        # TODO
-        return 'Form title'
+        if self.main_object:
+            rec_field = self.main_object[self.form_model._rec_name]
+            if hasattr(rec_field, 'id'):
+                rec_field = rec_field.name
+            title = _('Edit %s') % rec_field
+        else:
+            title = _('Create')
+            if self.form_model._description:
+                title += ' ' + self.form_model._description
+        return title
 
     @property
     def form_description(self):

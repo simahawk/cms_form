@@ -5,6 +5,7 @@
 from openerp import models
 from openerp import fields
 from openerp import _
+from openerp.tools.mimetypes import guess_mimetype
 
 import json
 import inspect
@@ -27,7 +28,7 @@ IGNORED_FORM_FIELDS = [
 ] + models.MAGIC_COLUMNS
 
 
-def m2o_to_form(item, value, **req_values):
+def m2o_to_form(form, record, fname, value, **req_values):
     # important: return False if no value
     # otherwise you will compare an empty recordset with an id
     # in a select input in form widget template.
@@ -39,17 +40,29 @@ def m2o_to_form(item, value, **req_values):
     return None
 
 
-def x2many_to_form(item, value, display_field='display_name', **req_values):
+def x2many_to_form(form, record, fname, value,
+                   display_field='display_name', **req_values):
     value = [{'id': x.id, 'name': x[display_field]} for x in value or []]
     value = json.dumps(value)
     return value
 
 
-def binary_to_form(item, value, **req_values):
+def binary_to_form(form, record, fname, value, **req_values):
+    _value = {
+        # 'value': '',
+        # 'raw_value': '',
+        # 'mimetype': '',
+    }
     if value:
-        # TODO: determine if this is an image or not
-        value = 'data:image/png;base64,' + value
-    return value
+        mimetype = guess_mimetype(value.decode('base64'))
+        _value = {
+            'value': value,
+            'raw_value': value,
+            'mimetype': mimetype,
+        }
+        if mimetype.startswith('image/'):
+            _value['value'] = 'data:{};base64,{}'.format(mimetype, value)
+    return _value
 
 
 def form_to_integer(form, fname, value, **req_values):
@@ -237,7 +250,6 @@ class CMSFormMixin(models.AbstractModel):
             if main_object and fname in main_object:
                 value = main_object[fname]
             # maybe a POST request with new values: override item value
-            # TODO: load particular fields too (file, image, etc)
             value = request_values.get(fname, value)
             # 1nd lookup for a default type handler
             value_handler = self._form_loaders.get(field['type'], None)
@@ -248,7 +260,8 @@ class CMSFormMixin(models.AbstractModel):
             value_handler = getattr(
                 self, '_form_load_' + fname, value_handler)
             if value_handler:
-                value = value_handler(main_object, value, **request_values)
+                value = value_handler(
+                    self, main_object, fname, value, **request_values)
             defaults[fname] = value
         if main_object:
             # add `has_*` flags for file fields

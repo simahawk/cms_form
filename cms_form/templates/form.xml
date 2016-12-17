@@ -156,7 +156,7 @@
       />
   <t t-if="form_data.get(fname)">
     <t t-set="prefix" t-value="fname"/>
-    <img class="img img-responsive" t-att-src="form_data[fname]" />
+    <img class="img img-responsive" t-att-src="form_data[fname]['value']" />
     <div t-attf-id="#{prefix}_keepbox" class="keepbox text-center">
       <div class="form-group">
         <label class="checkbox inline" t-attf-for="#{prefix}_keepcheck_yes">

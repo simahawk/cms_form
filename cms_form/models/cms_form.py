@@ -8,6 +8,7 @@ from openerp import _
 
 import json
 import inspect
+import base64
 
 
 IGNORED_FORM_FIELDS = [
@@ -44,21 +45,28 @@ def x2many_to_form(item, value, display_field='display_name', **req_values):
     return value
 
 
-def form_to_integer(value, **req_values):
+def binary_to_form(item, value, **req_values):
+    if value:
+        # TODO: determine if this is an image or not
+        value = 'data:image/png;base64,' + value
+    return value
+
+
+def form_to_integer(form, fname, value, **req_values):
     try:
         return int(value)
     except (ValueError, TypeError):
         return 0
 
 
-def form_to_float(value, **req_values):
+def form_to_float(form, fname, value, **req_values):
     try:
         return float(value)
     except (ValueError, TypeError):
         return 0.0
 
 
-def form_to_x2many(value, **req_values):
+def form_to_x2many(form, fname, value, **req_values):
     _value = False
     if value:
         ids = [int(rec_id) for rec_id in value.split(',')]
@@ -66,10 +74,27 @@ def form_to_x2many(value, **req_values):
     return _value
 
 
+def form_to_binary(form, fname, value, **req_values):
+    _value = False
+    if req_values.get(fname + '_keepcheck') == 'yes':
+        # prevent discarding image
+        req_values.pop(fname, None)
+        req_values.pop(fname + '_keepcheck')
+        return None
+    if value:
+        if hasattr(value, 'read'):
+            file_content = value.read()
+            _value = base64.encodestring(file_content)
+        else:
+            _value = value.split(',')[-1]
+    return _value
+
+
 DEFAULT_LOADERS = {
     'many2one': m2o_to_form,
     'one2many': x2many_to_form,
     'many2many': x2many_to_form,
+    'binary': binary_to_form,
 }
 DEFAULT_EXTRACTORS = {
     'integer': form_to_integer,
@@ -77,6 +102,7 @@ DEFAULT_EXTRACTORS = {
     'many2one': form_to_integer,
     'one2many': form_to_x2many,
     'many2many': form_to_x2many,
+    'binary': form_to_binary,
 }
 
 
@@ -182,8 +208,16 @@ class CMSFormMixin(models.AbstractModel):
         }
 
     def _form_get_request_values(self):
-        return {k: v for k, v in self.request.form.iteritems()
-                if k not in ('csrf_token', )}
+        # normal fields
+        values = {
+            k: v for k, v in self.request.form.iteritems()
+            if k not in ('csrf_token', )
+        }
+        # file fields
+        values.update(
+            {k: v for k, v in self.request.files.iteritems()}
+        )
+        return values
 
     def form_load_defaults(self, main_object=None, request_values=None):
         """Load default values.
@@ -238,7 +272,15 @@ class CMSFormMixin(models.AbstractModel):
             value_handler = getattr(
                 self, '_form_extract_' + fname, value_handler)
             if value_handler:
-                value = value_handler(value, **request_values)
+                value = value_handler(self, fname, value, **request_values)
+            if value is None:
+                # we assume we do not want to override the field value.
+                # a tipical example is an image field.
+                # If you have an existing image
+                # you cannot set the default value on the file input
+                # for standard HTML security restrictions.
+                # If you want to flush a value on a field just return "False".
+                continue
             values[fname] = value
         return values
 
@@ -268,6 +310,9 @@ DEFAULT_WIDGETS = {
     },
     'text': {
         'key': 'cms_form.field_widget_text',
+    },
+    'image': {
+        'key': 'cms_form.field_widget_image',
     },
 }
 

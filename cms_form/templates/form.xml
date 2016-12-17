@@ -117,4 +117,61 @@
 
 </template>
 
+
+<template id="imageupload_widget" name="Fluxdock image upload widget">
+  <div class="image-upload-widget">
+    <t t-set="image_input_name" t-value="image_input_name or 'image'" />
+    <t t-if="image_preview_url">
+        <img itemtype="image" class="img img-responsive" t-att-src="image_preview_url" />
+    </t>
+    <div class="imgupload" t-att-data-preview-width="image_preview_width">
+        <div class="file-tab">
+            <label t-att-for="image_input_name" class="btn btn-file">
+                <span class="info overlay overlay-slideup">
+                    <span class="browse">Browse</span>
+                    <info class="format">Format: *.png/*.jpg</info>
+                </span>
+
+            </label>
+        </div>
+    </div>
+  </div>
+</template>
+
+<template id="field_widget_text" name="CMS form text field widget">
+
+    <textarea t-att-name="fname" t-att-id="fname"
+              t-attf-class="form-control js_datepicker #{widget.get('css_klass', '')}"
+              t-esc="form_data.get(fname)" />
+
+</template>
+
+<template id="field_widget_image" name="CMS form image field widget">
+
+  <input
+      type="file" capture="camera" accept="image/*"
+      t-att-id="fname"
+      t-att-name="fname"
+      class="form-control"
+      />
+  <t t-if="form_data.get(fname)">
+    <t t-set="prefix" t-value="fname"/>
+    <img class="img img-responsive" t-att-src="form_data[fname]" />
+    <div t-attf-id="#{prefix}_keepbox" class="keepbox text-center">
+      <div class="form-group">
+        <label class="checkbox inline" t-attf-for="#{prefix}_keepcheck_yes">
+          <input type="radio" t-attf-id="#{prefix}_keepcheck_yes" t-attf-name="#{prefix}_keepcheck" checked="1" value="yes"/>
+          keep submitted
+        </label>
+        <label class="checkbox inline" t-attf-for="#{prefix}_keepcheck_no">
+          <input type="radio" t-attf-id="#{prefix}_keepcheck_no" t-attf-name="#{prefix}_keepcheck" value="no"/>
+          replace submitted
+        </label>
+      </div>
+    </div>
+  </t>
+</template>
+
+
+
 </odoo>

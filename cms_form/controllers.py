@@ -9,7 +9,7 @@ import werkzeug
 class FormControllerMixin(object):
 
     # default template
-    template = ''
+    template = 'cms_form.form_wrapper'
 
     def get_template(self, form, **kw):
         """Retrieve rendering template."""
@@ -66,9 +66,10 @@ class FormControllerMixin(object):
             main_object = request.env[model].browse(model_id)
         form = self.get_form(model, main_object=main_object)
         form.form_process()
-        if form.form_redirect:
-            # anything went fine
+        if form.form_success and form.form_redirect:
+            # anything went fine, redirect to next url
             return werkzeug.utils.redirect(form.form_next_url())
+        # render form wrapper
         values = self.get_render_values(main_object, **kw)
         values['form'] = form
         return request.website.render(
@@ -79,8 +80,6 @@ class FormControllerMixin(object):
 
 class CMSFormController(http.Controller, FormControllerMixin):
     """CMS form controller."""
-
-    template = 'cms_form.form_wrapper'
 
     @http.route([
         '/cms/<string:model>/create',

@@ -15,11 +15,22 @@
 
 </template>
 
+<!-- TODO: add non-horizontal form template -->
+
+<template id="form_horizontal_field_wrapper" name="CMS form field wrapper horiz form">
+    <div t-attf-class="form-group form-field field-#{fname} #{field['required'] and 'field-required' or ''} #{errors.get(fname) and 'has-error' or ''}">
+      <label class="col-md-3 col-sm-4 control-label"
+             t-att-for="fname" t-esc="field['string']">Name</label>
+      <div class="col-md-9 col-sm-8">
+        <t t-call="#{ widget.get('key') or 'cms_form.field_widget_char'}" />
+      </div>
+    </div>
+</template>
+
 
 <template id="base_form" name="CMS form template">
 
-  <form t-att-action="form.form_action"
-        method="POST"
+  <form t-att-action="form.form_action" t-att-method="form.form_method"
         t-attf-class="form-horizontal #{form.form_css_klass}"
         enctype="multipart/form-data">
 
@@ -27,15 +38,10 @@
 
     <t t-set="form_fields" t-value="form.form_fields()" />
     <t t-foreach="form_fields.iterkeys()" t-as="fname">
-      <t t-set="field" t-value="form_fields[fname]" />
-      <t t-set="widget" t-value="field.get('widget', {})" />
-      <div t-attf-class="form-group form-field field-#{fname} #{field['required'] and 'field-required' or ''}">
-        <label class="col-md-3 col-sm-4 control-label"
-               t-att-for="fname" t-esc="field['string']">Name</label>
-        <div class="col-md-9 col-sm-8">
-          <t t-call="#{ widget.get('key') or 'cms_form.field_widget_char'}" />
-        </div>
-      </div>
+      <t t-call="cms_form.form_horizontal_field_wrapper">
+        <t t-set="field" t-value="form_fields[fname]" />
+        <t t-set="widget" t-value="field.get('widget', {})" />
+      </t>
     </t>
     <div class="form-group form-controls">
        <div class="col-sm-9 col-sm-offset-3">
@@ -48,6 +54,7 @@
 
 </template>
 
+
 <template id="field_widget_char" name="CMS form text field widget">
 
   <input type="text"
@@ -59,6 +66,7 @@
          />
 
 </template>
+
 
 <template id="field_widget_m2o" name="CMS form m2o field widget">
 
@@ -138,6 +146,7 @@
   </div>
 </template>
 
+
 <template id="field_widget_text" name="CMS form text field widget">
 
     <textarea t-att-name="fname" t-att-id="fname"
@@ -146,8 +155,8 @@
 
 </template>
 
-<template id="field_widget_image" name="CMS form image field widget">
 
+<template id="field_widget_image" name="CMS form image field widget">
   <input
       type="file" capture="camera" accept="image/*"
       t-att-id="fname"

@@ -146,6 +146,8 @@ class CMSFormMixin(models.AbstractModel):
     _form_loaders = DEFAULT_LOADERS
     # ignore this fields default
     __form_fields_ignore = IGNORED_FORM_FIELDS
+    # internal flag for successful form
+    __form_success = False
 
     def form_init(self, request, main_object=None, **kw):
         """Initalize a form instance.
@@ -161,6 +163,36 @@ class CMSFormMixin(models.AbstractModel):
         for k, v in kw.iteritems():
             if not inspect.ismethod(getattr(self, '_form_' + k)):
                 setattr(self, '_form_' + k, v)
+
+    @property
+    def form_success(self):
+        return self.__form_success
+
+    @form_success.setter
+    def form_success(self, value):
+        self.__form_success = value
+
+    @property
+    def form_title(self):
+        # TODO
+        return 'Form title'
+
+    @property
+    def form_description(self):
+        # TODO
+        return 'Form description'
+
+    @property
+    def form_mode(self):
+        if self._form_mode:
+            return self._form_mode
+        if self.request.method.upper() == 'GET':
+            return 'read'
+        elif self.request.method.upper() == 'POST':
+            if self.main_object:
+                return 'write'
+            return 'creates'
+        return 'base'
 
     @property
     def form_model(self):
@@ -183,6 +215,7 @@ class CMSFormMixin(models.AbstractModel):
             _model_fields = self.form_model.fields_get(
                 self._form_model_fields,
                 attributes=self._form_fields_attributes)
+        # load form fields
         _form_fields = self.fields_get(attributes=self._form_fields_attributes)
         _all_fields.update(_model_fields)
         # form fields override model fields
@@ -324,6 +357,7 @@ DEFAULT_WIDGETS = {
     'text': {
         'key': 'cms_form.field_widget_text',
     },
+    # TODO: handle normal file fields
     'image': {
         'key': 'cms_form.field_widget_image',
     },
@@ -337,12 +371,26 @@ class CMSForm(models.AbstractModel):
     # template to render the form
     form_template = 'cms_form.base_form'
     form_action = ''
+    form_method = 'POST'
     _form_mode = ''
     _form_extra_css_klass = ''
     _form_validators = {}
     _form_widgets = DEFAULT_WIDGETS
     # internal flag for turning on redirection
     __form_redirect = False
+
+    @property
+    def form_title(self):
+        if self.main_object:
+            rec_field = self.main_object[self.form_model._rec_name]
+            if hasattr(rec_field, 'id'):
+                rec_field = rec_field.name
+            title = _('Edit %s') % rec_field
+        else:
+            title = _('Create')
+            if self.form_model._description:
+                title += ' ' + self.form_model._description
+        return title
 
     @property
     def form_redirect(self):
@@ -379,34 +427,6 @@ class CMSForm(models.AbstractModel):
     def form_msg_error_missing(self):
         return _('Some required fields are empty.')
 
-    @property
-    def form_title(self):
-        if self.main_object:
-            rec_field = self.main_object[self.form_model._rec_name]
-            if hasattr(rec_field, 'id'):
-                rec_field = rec_field.name
-            title = _('Edit %s') % rec_field
-        else:
-            title = _('Create')
-            if self.form_model._description:
-                title += ' ' + self.form_model._description
-        return title
-
-    @property
-    def form_description(self):
-        # TODO
-        return 'Form description'
-
-    @property
-    def form_mode(self):
-        if self._form_mode:
-            return self._form_mode
-        if self.request.method.upper() == 'GET':
-            return 'write'
-        elif self.request.method.upper() == 'POST':
-            return 'create'
-        return 'base'
-
     def form_render(self, override_values=None):
         override_values = override_values or {}
         values = self._form_render_values
@@ -442,7 +462,7 @@ class CMSForm(models.AbstractModel):
                 return main_object.website_url
         return '/'
 
-    def _form_create_or_update(self):
+    def form_create_or_update(self):
         write_values = self.form_extract_values()
         if self.main_object:
             self.main_object.write(write_values)
@@ -458,7 +478,8 @@ class CMSForm(models.AbstractModel):
         msg = False
         errors, errors_message = self.form_validate()
         if not errors:
-            self._form_create_or_update()
+            self.form_create_or_update()
+            self.form_success = True
             self.form_redirect = True
         else:
             render_values.update({
@@ -558,15 +579,3 @@ class TestFieldsForm(models.AbstractModel):
     def _form_validate_char(self, value, **request_values):
         """Specific validator for all `char` fields."""
         return not len(value) > 8, 'Text lenght must be greater than 8!'
-
-#
-# # TEST
-#
-# class PartnerForm(models.AbstractModel):
-#     """Local test form."""
-#
-#     _name = 'cms.form.project.reference'
-#     _inherit = 'cms.form'
-#     _form_model = 'project.reference'
-#     _form_model_fields = ('name', )
-#     _form_required_fields = ('name', )
